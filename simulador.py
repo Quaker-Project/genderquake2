@@ -8,7 +8,6 @@ from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
 import calmap
 
-
 def entrenar_y_ajustar_modelo(df_train):
     df_train = df_train.sort_values('Fecha').reset_index(drop=True)
     t0_train = df_train['Fecha'].min()
@@ -127,7 +126,7 @@ def forecast_period_single_sim(
 
     mu_fn, alpha_fn = make_seasonal_fns(mu_interp_fn, alpha_interp, T_train, T_ini, T_fin)
     events_sim = simulate_hawkes_ogata(mu_fn, alpha_fn, decay_fit, T_ini, T_fin)
-    return events_sim  # DEVOLVEMOS LOS EVENTOS SIMULADOS
+    return events_sim
 
 
 def simulate_hawkes_ogata(mu_fn, alpha_fn, decay, t_start, t_end, max_jumps=10000):
@@ -168,11 +167,11 @@ def generar_calendario_eventos(t0_train, events_real, events_sim, start_date, en
     for d in dates_sim:
         if d in day_labels.index:
             if day_labels[d] == 1:
-                day_labels[d] = 3  # coincidencia
+                day_labels[d] = 3
             elif day_labels[d] == 0:
-                day_labels[d] = 2  # solo simulado
+                day_labels[d] = 2
 
-    colors = ['#ffffff', '#377eb8', '#e41a1c', '#984ea3']  # blanco, azul, rojo, morado
+    colors = ['#ffffff', '#377eb8', '#e41a1c', '#984ea3']
     cmap = ListedColormap(colors)
 
     plt.figure(figsize=(19, 9))
@@ -197,14 +196,11 @@ def generar_calendario_eventos(t0_train, events_real, events_sim, start_date, en
     plt.title(f"Mapa de calor de feminicidios (reales, simulados y coincidencias)\n{start_date.date()} - {end_date.date()}")
     plt.tight_layout()
     plt.gcf().savefig("calmap_feminicidios.png", dpi=300)
-    plt.show()
+    plt.close()
 
+
+# NUEVO: obtener lista de fechas simuladas
 def obtener_fechas_simuladas(t0_train, events_sim):
-    """
-    Convierte los tiempos simulados (en días) a fechas reales del calendario.
-    Devuelve un DataFrame ordenado con las fechas previstas.
-    """
     fechas_sim = (t0_train + pd.to_timedelta(events_sim, unit='D')).floor('D')
     df_fechas = pd.DataFrame({"Fecha prevista": sorted(fechas_sim.unique())})
     return df_fechas
-
