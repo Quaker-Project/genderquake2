@@ -1,14 +1,15 @@
-streamlit
-pandas
-numpy
-tqdm
-python-dateutil
-matplotlib
-scikit-learn
-numpyro
-jax
-jaxlib
-bstpp
-shapely
-geopandas
-pyogrio
+# --- Base ---
+streamlit>=1.38.0
+pandas>=2.2.0
+numpy>=1.26.0
+
+# --- Optimización ---
+numba>=0.60.0
+scipy>=1.13.0
+
+# --- Gráficos ---
+matplotlib>=3.9.0
+calmap>=0.0.9
+
+# --- Machine learning ligero ---
+scikit-learn>=1.5.0
