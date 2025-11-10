@@ -67,17 +67,34 @@ if uploaded_file:
             events_real = (df_real_post_entreno['Fecha'] - t0_train).dt.total_seconds() / (3600 * 24)
 
             st.subheader("📅 Calendario de eventos reales vs simulados")
-            generar_calendario_eventos(
-                t0_train,
-                events_real.values,
-                events_sim,
-                pd.to_datetime(fecha_sim_inicio),
-                pd.to_datetime(fecha_sim_fin)
-            )
+generar_calendario_eventos(
+    t0_train,
+    events_real.values,
+    events_sim,
+    pd.to_datetime(fecha_sim_inicio),
+    pd.to_datetime(fecha_sim_fin)
+)
 
-            st.download_button(
-                label="📥 Descargar imagen del calendario",
-                data=open("calmap_feminicidios.png", "rb").read(),
-                file_name="calmap_feminicidios.png",
-                mime="image/png"
-            )
+st.download_button(
+    label="📥 Descargar imagen del calendario",
+    data=open("calmap_feminicidios.png", "rb").read(),
+    file_name="calmap_feminicidios.png",
+    mime="image/png"
+)
+
+# 🔍 Mostrar la lista de fechas simuladas
+from simulador import obtener_fechas_simuladas
+
+st.subheader("📆 Fechas previstas de feminicidios (según la simulación)")
+df_fechas_sim = obtener_fechas_simuladas(t0_train, events_sim)
+st.dataframe(df_fechas_sim, use_container_width=True)
+
+# Opción para descargar la tabla en CSV
+csv_data = df_fechas_sim.to_csv(index=False).encode("utf-8")
+st.download_button(
+    label="📥 Descargar lista de fechas simuladas (CSV)",
+    data=csv_data,
+    file_name="fechas_simuladas.csv",
+    mime="text/csv"
+)
+
