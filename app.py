@@ -1,184 +1,83 @@
-# app.py
 import streamlit as st
 import pandas as pd
-import geopandas as gpd
-import numpy as np
-import os
-import tempfile
-import zipfile
-import io
-import matplotlib.pyplot as plt
-from shapely.geometry import box
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import precision_score, recall_score, f1_score
-from tqdm import tqdm
-from dateutil.parser import parse
-import calendar
+from simulador import (
+    entrenar_y_ajustar_modelo,
+    forecast_period_single_sim,
+    generar_calendario_eventos
+)
 
-from simulador import entrenar_modelo, simular_eventos
+st.set_page_config(page_title="Simulador de Feminicidios", layout="wide")
 
-st.title("🔮 Simulación de riesgo espacial y temporal de feminicidios")
+st.title("🔮 Simulador de feminicidios con procesos de Hawkes")
 
-# -------------------------------
-# Carga de archivos
-# -------------------------------
-ruta_robos = st.file_uploader("Sube shapefile de eventos (.zip con .shp, .dbf, .shx...)", type=["zip"])
-ruta_contorno = st.file_uploader("Opcional: shapefile de contorno/calles (.zip)", type=["zip"])
+uploaded_file = st.file_uploader("📤 Carga un archivo Excel con una columna 'Fecha'", type=['xlsx'])
 
-cell_size = st.number_input("Tamaño celda rejilla (m)", min_value=100, max_value=2000, value=500, step=100)
-umbral = st.slider("Umbral de probabilidad de riesgo", 0.0, 1.0, 0.7, 0.05)
-mes_simulacion = st.text_input("Mes a simular (YYYY-MM)", "2019-09")
-fecha_entreno_inicio = st.text_input("Fecha inicio entrenamiento (YYYY-MM)", "2017-01")
-fecha_entreno_fin = st.text_input("Fecha fin entrenamiento (YYYY-MM)", "2019-08")
-titulo_mapa = st.text_input("Título del mapa", f"Riesgo predicho vs eventos reales - {mes_simulacion}")
-
-# -------------------------------
-# Funciones auxiliares
-# -------------------------------
-def cargar_shapefile_zip(zip_file):
-    if zip_file is None:
-        return None
-    with tempfile.TemporaryDirectory() as tmpdir:
-        z = zipfile.ZipFile(zip_file)
-        z.extractall(tmpdir)
-        shp_files = [f for f in os.listdir(tmpdir) if f.endswith(".shp")]
-        if not shp_files:
-            st.error("No se encontró archivo .shp en el ZIP.")
-            return None
-        return gpd.read_file(os.path.join(tmpdir, shp_files[0]))
-
-
-def parse_fecha_segura(fecha):
-    try:
-        return parse(str(fecha), dayfirst=True, fuzzy=True)
-    except:
-        return pd.NaT
-
-
-if ruta_robos is None:
-    st.warning("Sube el shapefile de puntos para continuar.")
-    st.stop()
-
-gdf = cargar_shapefile_zip(ruta_robos)
-if gdf is None:
-    st.stop()
-
-# CRS y fechas
-gdf = gdf.to_crs(epsg=4326)
-gdf["Fecha"] = gdf["Fecha"].apply(parse_fecha_segura)
-gdf = gdf.dropna(subset=["Fecha"])
-gdf["month"] = gdf["Fecha"].dt.to_period("M")
-
-# -------------------------------
-# Grid espacial
-# -------------------------------
-xmin, ymin, xmax, ymax = gdf.to_crs(epsg=32616).total_bounds
-cols = list(np.arange(xmin, xmax, cell_size))
-rows = list(np.arange(ymin, ymax, cell_size))
-polygons = []
-cell_ids = []
-for i, x in enumerate(cols):
-    for j, y in enumerate(rows):
-        poly = box(x, y, x + cell_size, y + cell_size)
-        polygons.append(poly)
-        cell_ids.append(f"{i}_{j}")
-
-gdf_grid = gpd.GeoDataFrame({'cell_id': cell_ids}, geometry=polygons, crs="EPSG:32616")
-gdf_grid["X"] = gdf_grid.geometry.centroid.x
-gdf_grid["Y"] = gdf_grid.geometry.centroid.y
-
-# -------------------------------
-# Entrenamiento y simulación
-# -------------------------------
-mes_sim = pd.Period(mes_simulacion, freq="M")
-if st.button("🚀 Ejecutar simulación y predicción"):
-    st.info("Entrenando modelo Hawkes y simulando eventos...")
-
-    # --- Entrenar modelo Hawkes ---
-    gdf_boundaries = gdf_grid.to_crs(epsg=4326)
-    model, gdf_train, gdf_test, t0 = entrenar_modelo(
-        gdf_events=gdf.to_crs(epsg=4326),
-        gdf_boundaries=gdf_boundaries,
-        fecha_inicio=pd.to_datetime(fecha_entreno_inicio),
-        fecha_split=pd.to_datetime(fecha_entreno_fin)
-    )
-
-    # --- Simular eventos ---
-    gdf_simulados = simular_eventos(model)
-
-    # -------------------------------
-    # Mapa espacial
-    # -------------------------------
-    st.subheader("🗺️ Mapa espacial de riesgo")
-    fig, ax = plt.subplots(figsize=(10, 8))
-    gdf_grid.boundary.plot(ax=ax, linewidth=0.3, color="gray")
-    if not gdf_simulados.empty:
-        gdf_simulados.plot(ax=ax, color="red", markersize=10, alpha=0.7, label="Eventos simulados")
-    gdf.plot(ax=ax, color="black", markersize=5, alpha=0.6, label="Eventos reales")
-    plt.legend()
-    plt.title(titulo_mapa)
-    plt.axis("off")
-    st.pyplot(fig)
-
-    # -------------------------------
-    # Calendario de eventos simulados
-    # -------------------------------
-    st.subheader("📅 Días con feminicidios simulados")
-
-    if not gdf_simulados.empty:
-        gdf_simulados["dia"] = gdf_simulados["Fecha"].dt.date
-        conteo_dias = gdf_simulados["dia"].value_counts().sort_index()
-
-        mes_sim_date = pd.to_datetime(mes_simulacion + "-01")
-        year, month = mes_sim_date.year, mes_sim_date.month
-
-        cal = calendar.Calendar(firstweekday=0)
-        dias_html = "<table style='width:100%; text-align:center; border-collapse: collapse;'>"
-        dias_html += f"<tr><th colspan='7' style='font-size:18px'>{calendar.month_name[month]} {year}</th></tr>"
-        dias_html += "<tr>" + "".join(f"<th>{d}</th>" for d in ["L", "M", "X", "J", "V", "S", "D"]) + "</tr>"
-
-        for week in cal.monthdatescalendar(year, month):
-            dias_html += "<tr>"
-            for day in week:
-                if day.month != month:
-                    dias_html += "<td style='background-color:#f9f9f9'></td>"
-                else:
-                    if day in conteo_dias.index:
-                        n = conteo_dias[day]
-                        color = "#ff9999"
-                        texto = f"{day.day}<br><small>{n} evento(s)</small>"
-                    else:
-                        color = "white"
-                        texto = str(day.day)
-                    dias_html += f"<td style='padding:8px; border:1px solid #ddd; background-color:{color}'>{texto}</td>"
-            dias_html += "</tr>"
-
-        dias_html += "</table>"
-        st.markdown(dias_html, unsafe_allow_html=True)
+if uploaded_file:
+    df = pd.read_excel(uploaded_file)
+    if 'Fecha' not in df.columns:
+        st.error("❌ El archivo no contiene una columna llamada 'Fecha'.")
     else:
-        st.info("El modelo no generó eventos simulados para este mes.")
+        df['Fecha'] = pd.to_datetime(df['Fecha'])
+        fecha_entreno_inicio = st.date_input("📅 Fecha de inicio del entrenamiento", df['Fecha'].min())
+        fecha_entreno_fin = st.date_input("📅 Fecha de fin del entrenamiento", df['Fecha'].max())
 
-    # -------------------------------
-    # Descarga de resultados
-    # -------------------------------
-    if not gdf_simulados.empty:
-        def to_geojson_bytes(gdf):
-            return gdf.to_json().encode('utf-8')
+        df_train = df[
+            (df['Fecha'] >= pd.to_datetime(fecha_entreno_inicio)) &
+            (df['Fecha'] <= pd.to_datetime(fecha_entreno_fin))
+        ]
 
-        def to_shapefile_bytes(gdf):
-            with tempfile.TemporaryDirectory() as tmpdir:
-                shp_path = os.path.join(tmpdir, "simulados.shp")
-                gdf.to_file(shp_path)
-                zip_buffer = io.BytesIO()
-                with zipfile.ZipFile(zip_buffer, "w") as zf:
-                    for ext in [".shp", ".shx", ".dbf", ".prj", ".cpg"]:
-                        file = os.path.join(tmpdir, f"simulados{ext}")
-                        if os.path.exists(file):
-                            zf.write(file, arcname=f"simulados{ext}")
-                return zip_buffer.getvalue()
+        if st.button("🚀 Entrenar modelo"):
+            with st.spinner("Entrenando modelo de Hawkes..."):
+                t0_train, mu_interp_base, alpha_interp, decay_fit, T_train = entrenar_y_ajustar_modelo(df_train)
+                st.session_state['modelo_entrenado'] = (t0_train, mu_interp_base, alpha_interp, decay_fit, T_train)
+                st.success("✅ Modelo entrenado correctamente")
 
-        geojson_bytes = to_geojson_bytes(gdf_simulados)
-        shapefile_bytes = to_shapefile_bytes(gdf_simulados)
+        if 'modelo_entrenado' in st.session_state:
+            t0_train, mu_interp_base, alpha_interp, decay_fit, T_train = st.session_state['modelo_entrenado']
 
-        st.download_button("📥 Descargar simulación (GeoJSON)", geojson_bytes, file_name="simulados.geojson", mime="application/geo+json")
-        st.download_button("📦 Descargar simulación (Shapefile ZIP)", shapefile_bytes, file_name="simulados.zip", mime="application/zip")
+            fecha_sim_inicio = st.date_input("🧪 Fecha de inicio de simulación", value=fecha_entreno_fin + pd.Timedelta(days=1))
+            fecha_sim_fin = st.date_input("🧪 Fecha de fin de simulación", value=fecha_sim_inicio + pd.Timedelta(days=365))
+
+            mu_boost = st.slider("🔥 Multiplicador de intensidad base (mu_boost)", 0.1, 3.0, 1.0, step=0.1)
+
+            if st.button("🎲 Simular eventos futuros"):
+                with st.spinner("Simulando eventos..."):
+                    events_sim = forecast_period_single_sim(
+                        t0_train,
+                        mu_interp_base,
+                        alpha_interp,
+                        decay_fit,
+                        pd.to_datetime(fecha_sim_inicio),
+                        pd.to_datetime(fecha_sim_fin),
+                        mu_boost=mu_boost,
+                        T_train=T_train
+                    )
+                    st.session_state['simulacion'] = (events_sim, fecha_sim_inicio, fecha_sim_fin)
+                    st.success(f"✅ Simulación completada. Número de eventos previstos: {len(events_sim)}")
+
+        if 'simulacion' in st.session_state:
+            events_sim, fecha_sim_inicio, fecha_sim_fin = st.session_state['simulacion']
+
+            df_real_post_entreno = df[
+                df['Fecha'].between(
+                    pd.to_datetime(fecha_sim_inicio),
+                    pd.to_datetime(fecha_sim_fin)
+                )
+            ]
+            events_real = (df_real_post_entreno['Fecha'] - t0_train).dt.total_seconds() / (3600 * 24)
+
+            st.subheader("📅 Calendario de eventos reales vs simulados")
+            generar_calendario_eventos(
+                t0_train,
+                events_real.values,
+                events_sim,
+                pd.to_datetime(fecha_sim_inicio),
+                pd.to_datetime(fecha_sim_fin)
+            )
+
+            st.download_button(
+                label="📥 Descargar imagen del calendario",
+                data=open("calmap_feminicidios.png", "rb").read(),
+                file_name="calmap_feminicidios.png",
+                mime="image/png"
+            )
