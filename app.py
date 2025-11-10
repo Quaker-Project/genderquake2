@@ -3,14 +3,14 @@ import pandas as pd
 from simulador import (
     entrenar_y_ajustar_modelo,
     forecast_period_single_sim,
-    generar_calendario_eventos
+    generar_calendario_eventos,
+    obtener_fechas_simuladas
 )
 
 st.set_page_config(page_title="Simulador de Feminicidios", layout="wide")
-
 st.title("🔮 Simulador de feminicidios con procesos de Hawkes")
 
-uploaded_file = st.file_uploader("📤 Carga un archivo Excel con una columna 'Fecha'", type=['xlsx'])
+uploaded_file = st.file_uploader("📤 Carga un archivo Excel con columna 'Fecha'", type=['xlsx'])
 
 if uploaded_file:
     df = pd.read_excel(uploaded_file)
@@ -35,8 +35,14 @@ if uploaded_file:
         if 'modelo_entrenado' in st.session_state:
             t0_train, mu_interp_base, alpha_interp, decay_fit, T_train = st.session_state['modelo_entrenado']
 
-            fecha_sim_inicio = st.date_input("🧪 Fecha de inicio de simulación", value=fecha_entreno_fin + pd.Timedelta(days=1))
-            fecha_sim_fin = st.date_input("🧪 Fecha de fin de simulación", value=fecha_sim_inicio + pd.Timedelta(days=365))
+            fecha_sim_inicio = st.date_input(
+                "🧪 Fecha de inicio de simulación",
+                value=(fecha_entreno_fin + pd.Timedelta(days=1))
+            )
+            fecha_sim_fin = st.date_input(
+                "🧪 Fecha de fin de simulación",
+                value=(fecha_sim_inicio + pd.Timedelta(days=365))
+            )
 
             mu_boost = st.slider("🔥 Multiplicador de intensidad base (mu_boost)", 0.1, 3.0, 1.0, step=0.1)
 
@@ -67,34 +73,30 @@ if uploaded_file:
             events_real = (df_real_post_entreno['Fecha'] - t0_train).dt.total_seconds() / (3600 * 24)
 
             st.subheader("📅 Calendario de eventos reales vs simulados")
-generar_calendario_eventos(
-    t0_train,
-    events_real.values,
-    events_sim,
-    pd.to_datetime(fecha_sim_inicio),
-    pd.to_datetime(fecha_sim_fin)
-)
+            generar_calendario_eventos(
+                t0_train,
+                events_real.values,
+                events_sim,
+                pd.to_datetime(fecha_sim_inicio),
+                pd.to_datetime(fecha_sim_fin)
+            )
 
-st.download_button(
-    label="📥 Descargar imagen del calendario",
-    data=open("calmap_feminicidios.png", "rb").read(),
-    file_name="calmap_feminicidios.png",
-    mime="image/png"
-)
+            st.download_button(
+                label="📥 Descargar imagen del calendario",
+                data=open("calmap_feminicidios.png", "rb").read(),
+                file_name="calmap_feminicidios.png",
+                mime="image/png"
+            )
 
-# 🔍 Mostrar la lista de fechas simuladas
-from simulador import obtener_fechas_simuladas
+            # NUEVO: mostrar lista de fechas simuladas
+            st.subheader("📆 Fechas previstas de feminicidios (simulación)")
+            df_fechas_sim = obtener_fechas_simuladas(t0_train, events_sim)
+            st.dataframe(df_fechas_sim, use_container_width=True)
 
-st.subheader("📆 Fechas previstas de feminicidios (según la simulación)")
-df_fechas_sim = obtener_fechas_simuladas(t0_train, events_sim)
-st.dataframe(df_fechas_sim, use_container_width=True)
-
-# Opción para descargar la tabla en CSV
-csv_data = df_fechas_sim.to_csv(index=False).encode("utf-8")
-st.download_button(
-    label="📥 Descargar lista de fechas simuladas (CSV)",
-    data=csv_data,
-    file_name="fechas_simuladas.csv",
-    mime="text/csv"
-)
-
+            csv_data = df_fechas_sim.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                label="📥 Descargar lista de fechas simuladas (CSV)",
+                data=csv_data,
+                file_name="fechas_simuladas.csv",
+                mime="text/csv"
+            )
