@@ -15,7 +15,7 @@ from tqdm import tqdm
 from dateutil.parser import parse
 import calendar
 
-from simulador import entrenar_modelo, simular_eventos
+
 
 st.title("🔮 Simulación de riesgo espacial y temporal de feminicidios")
 
