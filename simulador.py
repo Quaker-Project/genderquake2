@@ -198,3 +198,13 @@ def generar_calendario_eventos(t0_train, events_real, events_sim, start_date, en
     plt.tight_layout()
     plt.gcf().savefig("calmap_feminicidios.png", dpi=300)
     plt.show()
+
+def obtener_fechas_simuladas(t0_train, events_sim):
+    """
+    Convierte los tiempos simulados (en días) a fechas reales del calendario.
+    Devuelve un DataFrame ordenado con las fechas previstas.
+    """
+    fechas_sim = (t0_train + pd.to_timedelta(events_sim, unit='D')).floor('D')
+    df_fechas = pd.DataFrame({"Fecha prevista": sorted(fechas_sim.unique())})
+    return df_fechas
+
